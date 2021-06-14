@@ -1,4 +1,4 @@
-module github.com/grumpypixel/imdb-poster
+module github.com/grumpypixel/imdb-poster-go
 
 go 1.16
 
