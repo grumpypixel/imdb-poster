@@ -5,11 +5,9 @@ import (
 	"net/http"
 	"strings"
 	"sync"
-	"time"
 	"unicode"
 
 	"github.com/PuerkitoBio/goquery"
-	"github.com/grumpypixel/go-webget"
 	"github.com/grumpypixel/gofu/stringslice"
 )
 
@@ -43,32 +41,21 @@ type Poster struct {
 	Index    int
 }
 
-func (db *IMDB) collectPosters(movieList []string) ([]*Poster, []error) {
+func (db *IMDB) fetchPoster(movie string) ([]*Poster, []error) {
 	posters := PosterCollector{}
 	errors := ErrorCollector{}
-	waitGroup := sync.WaitGroup{}
-	for _, movie := range movieList {
-		waitGroup.Add(1)
-		go func(movie string) {
-			movieURL, ok := db.validateMovieSource(movie)
-			if ok {
-				list, err := db.findPoster(movieURL)
-				if err == nil {
-					for i, imageURL := range list {
-						posters.Add(&Poster{MovieURL: movieURL, ImageURL: imageURL, Index: i})
-					}
-				} else {
-					errors.Add(err)
-				}
+
+	movieURL, ok := db.validateMovieSource(movie)
+	if ok {
+		list, err := db.findPoster(movieURL)
+		if err == nil {
+			for i, imageURL := range list {
+				posters.Add(&Poster{MovieURL: movieURL, ImageURL: imageURL, Index: i})
 			}
-			waitGroup.Done()
-		}(movie)
-		if db.Verbose {
-			fmt.Printf(".")
+		} else {
+			errors.Add(err)
 		}
-		time.Sleep(db.WaitBetweenRequests)
 	}
-	waitGroup.Wait()
 	return posters.Posters, errors.Errors
 }
 
@@ -149,7 +136,7 @@ func (db *IMDB) findMediaViewer(imdbURL string) (string, error) {
 	}
 
 	// meh. try a different approach.
-	titleID, ok := db.titleIDFromURL(imdbURL)
+	titleID, ok := db.TitleIDFromURL(imdbURL)
 	prefix := fmt.Sprintf("/title/%s/mediaviewer/", titleID)
 	if ok {
 		doc.Find("a").Each(func(index int, element *goquery.Selection) {
@@ -235,23 +222,6 @@ func (db *IMDB) findPostersInMediaViewer(mediaViewerURL string) ([]string, error
 	return posters, nil
 }
 
-func (db *IMDB) titleIDFromURL(imdbURL string) (string, bool) {
-	if !strings.Contains(imdbURL, "title/tt") {
-		return "", false
-	}
-
-	s := strings.Split(imdbURL, "/")
-	s = stringslice.TrimElements(s)
-	s = stringslice.RemoveEmptyElements(s)
-
-	indexTitle := stringslice.IndexOfElement("title", s)
-	if indexTitle == -1 || indexTitle == len(s)-1 {
-		return "", false
-	}
-	title := s[indexTitle+1]
-	return title, true
-}
-
 func (db *IMDB) mediaIDFromMediaViewerURL(mediaViewerURL string) (string, bool) {
 	parts := strings.Split(mediaViewerURL, "/")
 	parts = stringslice.TrimElements(parts)
@@ -317,19 +287,4 @@ func cleanURL(url string) string {
 		url = url[:index]
 	}
 	return strings.TrimSpace(url)
-}
-
-func download(url string, targetDir, filename string, waitGroup *sync.WaitGroup, progress webget.ProgressHandler) error {
-	options := &webget.Options{
-		ProgressHandler: progress,
-		Timeout:         time.Second * 60,
-		CreateTargetDir: true,
-	}
-
-	if err := webget.DownloadToFile(url, targetDir, filename, options); err != nil {
-		return err
-	}
-
-	waitGroup.Done()
-	return nil
 }
